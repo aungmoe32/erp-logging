@@ -8,14 +8,14 @@ services:
       - "443:443"
     volumes:
       - ./nginx/conf.d/:/etc/nginx/conf.d/
-      - /etc/letsencrypt/live/monitoring.megaerp.com/:/etc/nginx/certs/:ro
+      - ./nginx/certs/:/etc/nginx/certs/:ro
     healthcheck:
       test: curl -f http://localhost/ || exit 1
       interval: 10s
       timeout: 5s
       retries: 5
 
-  db:
+  mysql:
     image: mysql:8.0
     container_name: mysql
     restart: unless-stopped
@@ -35,7 +35,7 @@ services:
     image: bugsink/bugsink:2
     container_name: bugsink
     depends_on:
-      db:
+      mysql:
         condition: service_healthy
     restart: unless-stopped
     environment:
@@ -60,10 +60,10 @@ services:
     ports:
       - "9000:80"
     environment:
-      PMA_HOST: db
+      PMA_HOST: mysql
       MYSQL_ROOT_PASSWORD: ${DB_PASSWORD}
     depends_on:
-      - db
+      - mysql
 
 volumes:
   db-data:
