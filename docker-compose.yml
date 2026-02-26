@@ -1,0 +1,69 @@
+services:
+  nginx:
+    image: nginx:alpine
+    container_name: nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/conf.d/:/etc/nginx/conf.d/
+      - /etc/letsencrypt/live/monitoring.megaerp.com/:/etc/nginx/certs/:ro
+    healthcheck:
+      test: curl -f http://localhost/ || exit 1
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  db:
+    image: mysql:8.0
+    container_name: mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD} # Change this
+      MYSQL_DATABASE: ${BUGSINK_DB}
+    volumes:
+      - db-data:/var/lib/mysql
+    healthcheck:
+      test: mysqladmin ping -h localhost -u root -p${DB_PASSWORD}
+      retries: 5
+      start_period: 10s
+      interval: 5s
+      timeout: 5s
+
+  bugsink:
+    image: bugsink/bugsink:2
+    container_name: bugsink
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+    environment:
+      SECRET_KEY: ${BUGSINK_SECRET_KEY} # e.g. openssl rand -base64 50
+      CREATE_SUPERUSER: ${BUGSINK_CREATE_SUPERUSER} # format: username:password (remove after first run)
+      PORT: 8000
+      DATABASE_URL: mysql://${DB_USERNAME}:${DB_PASSWORD}@mysql:3306/${BUGSINK_DB} # Change password to match POSTGRES_PASSWORD above
+      BEHIND_HTTPS_PROXY: "true" # Change this for setups behind a proxy w/ ssl enabled
+      BASE_URL: ${BUGSINK_BASE_URL}
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          'python -c ''import requests; requests.get("http://localhost:8000/").raise_for_status()''',
+        ]
+      interval: 5s
+      timeout: 20s
+      retries: 10
+  phpmyadmin:
+    image: phpmyadmin/phpmyadmin
+    restart: always
+    ports:
+      - "9000:80"
+    environment:
+      PMA_HOST: db
+      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD}
+    depends_on:
+      - db
+
+volumes:
+  db-data:
